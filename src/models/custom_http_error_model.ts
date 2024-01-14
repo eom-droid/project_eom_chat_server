@@ -1,4 +1,4 @@
-export class CustomHttpErrorModel extends Error {
+export class CustomWSErrorModel extends Error {
   status: number = 500;
 
   constructor({ message, status }: { message: string; status: number }) {
@@ -7,7 +7,7 @@ export class CustomHttpErrorModel extends Error {
   }
 
   static fromError(error: Error) {
-    return new CustomHttpErrorModel({
+    return new CustomWSErrorModel({
       message: error.message,
       status: 500,
     });

@@ -1,10 +1,14 @@
 import { InferSchemaType, Schema, model } from "mongoose";
 
-const ChatSchema = new Schema(
+const ChatMemberSchema = new Schema(
   {
     roomId: { type: Schema.Types.ObjectId, required: true, ref: "chatRoom" },
     userId: { type: Schema.Types.ObjectId, required: true, ref: "user" },
-    content: { type: String, required: true },
+    lastReadChatId: {
+      type: Schema.Types.ObjectId,
+      required: false,
+      ref: "chat",
+    },
   },
   {
     timestamps: {
@@ -14,6 +18,6 @@ const ChatSchema = new Schema(
   }
 );
 
-export type Chat = InferSchemaType<typeof ChatSchema>;
+export type ChatMember = InferSchemaType<typeof ChatMemberSchema>;
 
-export const ChatModel = model("chat", ChatSchema);
+export const ChatMemberModel = model("chatMember", ChatMemberSchema);

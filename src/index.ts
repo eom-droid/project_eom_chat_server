@@ -1,6 +1,13 @@
 import { Server } from "socket.io";
 import mongoose from "mongoose";
 import amqp from "amqplib";
+import { CustomWSErrorModel } from "./models/custom_http_error_model";
+import { User } from "./models/user_model";
+import { AuthUtils } from "./utils/auth_utils";
+import * as UserRepository from "./repositories/user_repository";
+import * as ChatRepository from "./repositories/chat_repository";
+import { RoleType } from "./constant/default";
+import { ChatRoom } from "./models/chat_room_model";
 
 const server = async () => {
   const {
@@ -65,41 +72,138 @@ async function connectToRabbitMQ({
 // socket part
 async function socketPart({ PORT }: { PORT: string }) {
   const io = new Server({
-    path: "/socket.io",
+    path: "/project-eom/chat-server",
   });
 
-  io.use((socket, next) => {
-    console.log(socket);
-    console.log(socket.request);
-
-    next();
-  });
   const room = io.of("/room");
   const chat = io.of("/chat");
 
-  room.on("connection", (socket) => {});
+  room.on("connection", async (socket) => {
+    try {
+      // 1. 토큰 검증
+      const userId = await verifyToken(socket.request.headers.authorization);
+      // 2. userId로 user 검색
+      const user = await getUser(userId);
+      // 2. userId로 user가 속해있는 채팅방 검색
+      var rooms = await ChatRepository.searchRoomByUserId(userId);
 
-  // io.on("connection", (socket) => {
-  //   console.log("a user connected");
-  //   socket.on("message", (message) => {
-  //     console.log(message);
-  //     socket.emit("message", message);
-  //   });
+      // 3. 만약 rooms가 하나도 없다면 새로운 채팅방 생성
+      // if (rooms.length === 0 && user.role === RoleType.USER) {
+      //   await createChatRooms(userId);
 
-  //   socket.on("msg", (msg) => {
-  //     console.log(msg);
-  //     socket.emit("shit", msg);
-  //   });
-  //   socket.on("disconnect", () => {
-  //     console.log("user disconnected");
-  //     setTimeout(() => {
-  //       io.emit("message", "user disconnected");
-  //     }, 1000);
-  //   });
-  // });
+      //   rooms = await ChatRepository.searchRoomByUserId(userId);
+      // }
+
+      socket.emit("/", {
+        status: 200,
+        data: rooms,
+      });
+    } catch (err: any) {
+      console.log(err);
+      socket.emit("/", {
+        message: err.message || "something got wrong",
+        status: err.status || 500,
+      });
+      socket.disconnect();
+    }
+  });
+
+  chat.on("connection", (socket) => {
+    console.log("connection");
+
+    socket.on("message", (message) => {
+      console.log(message);
+      socket.emit("message", message);
+    });
+  });
 
   io.listen(Number(PORT));
   console.log(`server listening on port ${PORT}`);
 }
 
 server();
+
+export const createChatRooms = async (userId: string) => {
+  try {
+    const appOwner = await UserRepository.searchUsersByRole(RoleType.ADMIN);
+
+    for (let i = 0; i < appOwner.length; i++) {
+      const ownerId = appOwner[i]._id.toString();
+      const room = await ChatRepository.createChatRoom(ownerId, "엄태호");
+      const roomId = room._id.toString();
+
+      await Promise.all([
+        ChatRepository.createChatMember(ownerId, roomId),
+        ChatRepository.createChatMember(userId, roomId),
+      ]);
+    }
+  } catch (error) {
+    throw new CustomWSErrorModel({
+      message: "createChatRooms error",
+      status: 500,
+    });
+  }
+};
+
+// export const getChatRooms = async (userId: string) => {
+//   try {
+//     const rooms = await ChatRo.searchRoomByUserId(userId);
+
+//     return rooms;
+//   } catch (error) {
+//     throw error;
+//   }
+// }
+
+export const verifyToken = async (
+  authorization: string | undefined
+): Promise<string> => {
+  try {
+    if (!authorization) {
+      throw new CustomWSErrorModel({
+        message: "No authorization",
+        status: 401,
+      });
+    }
+
+    const splitToken = authorization.split(" ");
+
+    if (splitToken.length !== 2 || splitToken[0] !== "Bearer") {
+      throw new CustomWSErrorModel({
+        message: "No authorization",
+        status: 401,
+      });
+    }
+
+    const payload = AuthUtils.verifyToken(splitToken[1]);
+
+    return payload.id;
+  } catch (error: any) {
+    // console.log(new Date().toISOString() + ": npm log: " + error);
+    if (error instanceof CustomWSErrorModel) {
+      throw error;
+    } else {
+      throw new CustomWSErrorModel({
+        message: "No authorization",
+        status: 401,
+      });
+    }
+  }
+};
+
+export const getUser = async (userId: string) => {
+  try {
+    const user = await UserRepository.searchUserById(userId);
+
+    if (user === null) {
+      throw new CustomWSErrorModel({
+        message: "No user",
+        status: 401,
+      });
+    }
+
+    return user;
+  } catch (error) {
+    throw error;
+  }
+};
