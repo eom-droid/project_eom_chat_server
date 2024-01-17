@@ -4,7 +4,7 @@ const ChatRoomSchema = new Schema(
   {
     title: { type: String, required: true },
     max: { type: Number, required: true },
-    lastChat: { type: Schema.Types.ObjectId, required: false },
+    lastChatId: { type: Schema.Types.ObjectId, required: false },
     // owner: { type: String, required: true },
     // password: { type: String, required: false },
   },

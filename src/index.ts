@@ -43,7 +43,17 @@ async function connectMongoDB({
   try {
     // mongoose를 통해 MongoDB에 연결
     await mongoose.connect(MONGO_URI + NODE_ENV + MONGO_URI_SUFFIX);
-    mongoose.set("debug", true);
+    mongoose.set("debug", function (collectionName, method, query, doc) {
+      console.log(
+        "Mongoose: " +
+          collectionName +
+          "." +
+          method +
+          " (" +
+          JSON.stringify(query, null, 2) +
+          ")"
+      );
+    });
     console.log("MongoDB connected");
   } catch (error) {
     console.error("Error connecting to MongoDB:", error);
