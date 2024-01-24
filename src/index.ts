@@ -43,17 +43,17 @@ async function connectMongoDB({
   try {
     // mongoose를 통해 MongoDB에 연결
     await mongoose.connect(MONGO_URI + NODE_ENV + MONGO_URI_SUFFIX);
-    mongoose.set("debug", function (collectionName, method, query, doc) {
-      console.log(
-        "Mongoose: " +
-          collectionName +
-          "." +
-          method +
-          " (" +
-          JSON.stringify(query, null, 2) +
-          ")"
-      );
-    });
+    // mongoose.set("debug", function (collectionName, method, query, doc) {
+    //   console.log(
+    //     "Mongoose: " +
+    //       collectionName +
+    //       "." +
+    //       method +
+    //       " (" +
+    //       JSON.stringify(query, null, 2) +
+    //       ")"
+    //   );
+    // });
     console.log("MongoDB connected");
   } catch (error) {
     console.error("Error connecting to MongoDB:", error);
@@ -85,45 +85,96 @@ async function socketPart({ PORT }: { PORT: string }) {
     path: "/project-eom/chat-server",
   });
 
-  const room = io.of("/room");
   const chat = io.of("/chat");
 
-  room.on("connection", async (socket) => {
+  chat.on("connection", async (socket) => {
+    console.log("connection");
     try {
       // 1. 토큰 검증
       const userId = await verifyToken(socket.request.headers.authorization);
       // 2. userId로 user 검색
       const user = await getUser(userId);
+      if (user === null) {
+        throw new CustomWSErrorModel({
+          message: "No user",
+          status: 400,
+        });
+      }
       // 2. userId로 user가 속해있는 채팅방 검색
       var rooms = await ChatRepository.searchRoomByUserId(userId);
 
       // 3. 만약 rooms가 하나도 없다면 새로운 채팅방 생성
-      // if (rooms.length === 0 && user.role === RoleType.USER) {
-      //   await createChatRooms(userId);
+      if (rooms.length === 0 && user.role === RoleType.USER) {
+        await createChatRooms(userId);
 
-      //   rooms = await ChatRepository.searchRoomByUserId(userId);
-      // }
+        rooms = await ChatRepository.searchRoomByUserId(userId);
+      }
 
-      socket.emit("/", {
+      socket.emit("getChatRoomsRes", {
         status: 200,
         data: rooms,
       });
     } catch (err: any) {
       console.log(err);
-      socket.emit("/", {
+      socket.emit("getChatRoomsRes", {
         message: err.message || "something got wrong",
         status: err.status || 500,
       });
       socket.disconnect();
     }
-  });
+    socket.on("joinRoomReq", async (data) => {
+      socket.join(data.roomId);
+      console.log(socket.rooms);
+    });
 
-  chat.on("connection", (socket) => {
-    console.log("connection");
+    socket.on("postMessageReq", async (message) => {
+      const { accessToken, roomId, content } = message;
+      if (
+        accessToken === undefined ||
+        roomId === undefined ||
+        content === undefined
+      ) {
+        socket.emit("postMessageRes", {
+          message: "data is not enough",
+          status: 400,
+        });
+        return;
+      }
+      // 1. 토큰 검증
+      const userId = await verifyToken(accessToken);
+      // 2. userId로 user 검색
+      // 3. userId로 user가 보내준 message의 roomId가 속해있는지 검사
+      const [user, room] = await Promise.all([
+        getUser(userId),
+        ChatRepository.searchUserInRoom({
+          roomId: message.roomId,
+          userId: userId,
+        }),
+      ]);
+      if (user === null || room === null) {
+        socket.emit("postMessageRes", {
+          message: "No user or room",
+          status: 400,
+        });
+        return;
+      }
+      // 4. db 적재
+      const chat = await ChatRepository.createChat({
+        roomId: message.roomId,
+        userId: userId,
+        content: message.content,
+      });
+      // 5. 내부 메시지 전송
+      socket.to(message.roomId).emit("postMessageRes", {
+        status: 200,
+        data: chat,
+      });
+    });
 
-    socket.on("message", (message) => {
-      console.log(message);
-      socket.emit("message", message);
+    socket.on("getMessageReq", async (data) => {
+      const { roomId } = data;
+      // const messages = await ChatRepository.searchChatByRoomId(roomId);
+      // socket.emit("getMessage", messages);
     });
   });
 
@@ -205,12 +256,12 @@ export const getUser = async (userId: string) => {
   try {
     const user = await UserRepository.searchUserById(userId);
 
-    if (user === null) {
-      throw new CustomWSErrorModel({
-        message: "No user",
-        status: 401,
-      });
-    }
+    // if (user === null) {
+    //   throw new CustomWSErrorModel({
+    //     message: "No user",
+    //     status: 401,
+    //   });
+    // }
 
     return user;
   } catch (error) {

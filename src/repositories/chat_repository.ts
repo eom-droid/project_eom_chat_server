@@ -79,6 +79,9 @@ export const searchRoomByUserId = async (userId: string) => {
               },
             },
             {
+              $unwind: "$user",
+            },
+            {
               $project: {
                 _id: 1,
                 profileImg: "$user.profileImg",
@@ -97,7 +100,6 @@ export const searchRoomByUserId = async (userId: string) => {
           pipeline: [
             {
               $project: {
-                _id: 1,
                 content: 1,
                 createdAt: 1,
               },
@@ -116,14 +118,15 @@ export const searchRoomByUserId = async (userId: string) => {
           title: "$room.title",
           // max는 chatRoom의 max를 가져온다
           max: "$room.max",
-          // lastCha는 lastChat을 가져온다
-          lastChat: 1,
+          // lastChatContent는 lastChat의 내용을 가져온다
+          lastChatContent: "$lastChat.content",
+          // lastChatCreatedAt는 lastChat의 생성시간을 가져온다
+          lastChatCreatedAt: "$lastChat.createdAt",
           // members는 chatMember의 members를 가져온다
           members: 1,
         },
       },
     ]);
-    console.log(result);
 
     return result;
   } catch (error) {
@@ -149,6 +152,47 @@ export const createChatMember = async (userId: string, roomId: string) => {
     const chatMember = await ChatMemberModel.create({
       userId: new Types.ObjectId(userId),
       roomId: new Types.ObjectId(roomId),
+    });
+
+    return chatMember;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const createChat = async ({
+  userId,
+  roomId,
+  content,
+}: {
+  userId: string;
+  roomId: string;
+  content: string;
+}) => {
+  try {
+    const chat = await ChatModel.create({
+      userId: new Types.ObjectId(userId),
+      roomId: new Types.ObjectId(roomId),
+      content,
+    });
+
+    return chat;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const searchUserInRoom = async ({
+  roomId,
+  userId,
+}: {
+  roomId: string;
+  userId: string;
+}) => {
+  try {
+    const chatMember = await ChatMemberModel.findOne({
+      roomId: new Types.ObjectId(roomId),
+      userId: new Types.ObjectId(userId),
     });
 
     return chatMember;
