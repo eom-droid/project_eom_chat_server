@@ -2,6 +2,7 @@ import { ChatModel } from "../models/chat_model";
 import { ChatMemberModel } from "../models/chat_member_model";
 import { ChatRoomModel } from "../models/chat_room_model";
 import { Types } from "mongoose";
+import { PaginateReqModel } from "../models/paginate_req_model";
 
 export const searchRoomByUserId = async (userId: string) => {
   try {
@@ -196,6 +197,34 @@ export const searchUserInRoom = async ({
     });
 
     return chatMember;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getChats = async ({
+  paginateReq,
+  roomId,
+}: {
+  paginateReq: PaginateReqModel;
+  roomId: string;
+}) => {
+  try {
+    const query = paginateReq.generateQuery(true);
+
+    const result = await ChatModel.aggregate([
+      {
+        $match: {
+          roomId: new Types.ObjectId(roomId),
+          ...query,
+        },
+      },
+      { $sort: { _id: -1 } },
+      { $limit: paginateReq.count },
+    ]);
+    console.log(result);
+
+    return result;
   } catch (error) {
     throw error;
   }

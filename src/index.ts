@@ -8,6 +8,10 @@ import * as UserRepository from "./repositories/user_repository";
 import * as ChatRepository from "./repositories/chat_repository";
 import { RoleType } from "./constant/default";
 import { ChatRoom } from "./models/chat_room_model";
+import { PaginateReqModel } from "./models/paginate_req_model";
+import { count } from "console";
+import { after } from "node:test";
+import { PaginateResModel } from "./models/paginate_res_model";
 
 const server = async () => {
   const {
@@ -123,8 +127,61 @@ async function socketPart({ PORT }: { PORT: string }) {
       socket.disconnect();
     }
     socket.on("joinRoomReq", async (data) => {
-      socket.join(data.roomId);
-      console.log(socket.rooms);
+      try {
+        const { accessToken, roomId } = data;
+        if (accessToken === undefined || roomId === undefined) {
+          socket.emit("joinRoomRes", {
+            message: "data is not enough",
+            status: 400,
+          });
+          return;
+        }
+
+        // 1. 토큰 검증
+        const userId = await verifyToken(accessToken);
+        // 2. userId로 user 검색
+        // 3. userId와 roomId로 chatMember에서 유저가 있는지 확인(2번과 동기처리)
+        const [user, room] = await Promise.all([
+          getUser(userId),
+          ChatRepository.searchUserInRoom({
+            roomId: roomId,
+            userId: userId,
+          }),
+        ]);
+        if (user === null || room === null) {
+          socket.emit("joinRoomRes", {
+            message: "No user or room",
+            status: 400,
+          });
+          return;
+        }
+        // 4. socket join
+        socket.join(roomId);
+        // 5. pagination 처리
+        const paginateMessageRes = await ChatRepository.getChats({
+          paginateReq: new PaginateReqModel({
+            count: 30,
+          }),
+          roomId: roomId,
+        });
+        // 6. paginateMessageRes 전송
+        socket.emit("paginateMessageRes", {
+          status: 200,
+          data: new PaginateResModel({
+            meta: {
+              count: paginateMessageRes.length,
+              hasMore: paginateMessageRes.length === 30,
+            },
+            data: paginateMessageRes,
+          }),
+        });
+      } catch (err: any) {
+        console.log(err);
+        socket.emit("joinRoomRes", {
+          message: err.message || "something got wrong",
+          status: err.status || 500,
+        });
+      }
     });
 
     socket.on("postMessageReq", async (message) => {
