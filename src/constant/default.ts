@@ -24,3 +24,5 @@ export const numberToRoleType = (num: number) => {
       return RoleType.USER;
   }
 };
+
+export const PAGINATE_COUNT_DEFAULT = 30;

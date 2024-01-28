@@ -1,12 +1,12 @@
 import { Server } from "socket.io";
 import mongoose from "mongoose";
 import amqp from "amqplib";
-import { CustomWSErrorModel } from "./models/custom_http_error_model";
+import { CustomWSErrorModel } from "./models/custom_ws_error_model";
 import { User } from "./models/user_model";
 import { AuthUtils } from "./utils/auth_utils";
 import * as UserRepository from "./repositories/user_repository";
 import * as ChatRepository from "./repositories/chat_repository";
-import { RoleType } from "./constant/default";
+import { PAGINATE_COUNT_DEFAULT, RoleType } from "./constant/default";
 import { ChatRoom } from "./models/chat_room_model";
 import { PaginateReqModel } from "./models/paginate_req_model";
 import { count } from "console";
@@ -160,7 +160,7 @@ async function socketPart({ PORT }: { PORT: string }) {
         // 5. pagination 처리
         const paginateMessageRes = await ChatRepository.getChats({
           paginateReq: new PaginateReqModel({
-            count: 30,
+            count: PAGINATE_COUNT_DEFAULT,
           }),
           roomId: roomId,
         });
@@ -170,7 +170,7 @@ async function socketPart({ PORT }: { PORT: string }) {
           data: new PaginateResModel({
             meta: {
               count: paginateMessageRes.length,
-              hasMore: paginateMessageRes.length === 30,
+              hasMore: paginateMessageRes.length === PAGINATE_COUNT_DEFAULT,
             },
             data: paginateMessageRes,
           }),
@@ -228,10 +228,53 @@ async function socketPart({ PORT }: { PORT: string }) {
       });
     });
 
-    socket.on("getMessageReq", async (data) => {
-      const { roomId } = data;
-      // const messages = await ChatRepository.searchChatByRoomId(roomId);
-      // socket.emit("getMessage", messages);
+    socket.on("paginateMessageReq", async (data) => {
+      const { roomId, paginationParams, accessToken } = data;
+      if (
+        roomId === undefined ||
+        paginationParams === undefined ||
+        accessToken === undefined
+      ) {
+        socket.emit("paginateMessageRes", {
+          message: "data is not enough",
+          status: 400,
+        });
+        return;
+      }
+      // 1. 토큰 검증
+      const userId = await verifyToken(accessToken);
+      // 2. userId로 user 검색
+      // 3. userId와 roomId로 chatMember에서 유저가 있는지 확인(2번과 동기처리)
+      const [user, room] = await Promise.all([
+        getUser(userId),
+        ChatRepository.searchUserInRoom({
+          roomId: roomId,
+          userId: userId,
+        }),
+      ]);
+      if (user === null || room === null) {
+        socket.emit("paginateMessageRes", {
+          message: "No user or room",
+          status: 400,
+        });
+        return;
+      }
+      // 4. pagination 처리
+      const paginateMessageRes = await ChatRepository.getChats({
+        paginateReq: new PaginateReqModel(paginationParams),
+        roomId: roomId,
+      });
+      // 5. paginateMessageRes 전송
+      socket.emit("paginateMessageRes", {
+        status: 200,
+        data: new PaginateResModel({
+          meta: {
+            count: paginateMessageRes.length,
+            hasMore: paginateMessageRes.length === PAGINATE_COUNT_DEFAULT,
+          },
+          data: paginateMessageRes,
+        }),
+      });
     });
   });
 

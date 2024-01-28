@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { TokenType } from "../constant/default";
-import { CustomWSErrorModel } from "../models/custom_http_error_model";
+import { CustomWSErrorModel } from "../models/custom_ws_error_model";
 import { EncryptUtils } from "./encrypt_utils";
 
 export class customJwtPayload implements jwt.JwtPayload {

@@ -84,7 +84,7 @@ export const searchRoomByUserId = async (userId: string) => {
             },
             {
               $project: {
-                _id: 1,
+                _id: "$user._id",
                 profileImg: "$user.profileImg",
                 nickname: "$user.nickname",
               },
@@ -210,7 +210,7 @@ export const getChats = async ({
   roomId: string;
 }) => {
   try {
-    const query = paginateReq.generateQuery(true);
+    const query = paginateReq.generateQuery(false);
 
     const result = await ChatModel.aggregate([
       {
@@ -222,7 +222,6 @@ export const getChats = async ({
       { $sort: { _id: -1 } },
       { $limit: paginateReq.count },
     ]);
-    console.log(result);
 
     return result;
   } catch (error) {

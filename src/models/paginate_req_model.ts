@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { PAGINATE_COUNT_DEFAULT } from "../constant/default";
-import { CustomHttpErrorModel } from "./custom_http_error_model";
+import { CustomWSErrorModel } from "./custom_ws_error_model";
 
 export class PaginateReqModel {
   count: number;
@@ -14,7 +14,7 @@ export class PaginateReqModel {
     } catch (error) {
       console.log(new Date().toISOString() + ": npm log: " + error);
 
-      throw new CustomHttpErrorModel({
+      throw new CustomWSErrorModel({
         status: 400,
         message: "잘못된 요청입니다.",
       });
