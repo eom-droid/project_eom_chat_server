@@ -89,9 +89,9 @@ async function socketPart({ PORT }: { PORT: string }) {
     path: "/project-eom/chat-server",
   });
 
-  const chat = io.of("/chat");
+  const chatSocket = io.of("/chat");
 
-  chat.on("connection", async (socket) => {
+  chatSocket.on("connection", async (socket) => {
     console.log("connection");
     try {
       // 1. 토큰 검증
@@ -156,7 +156,8 @@ async function socketPart({ PORT }: { PORT: string }) {
           return;
         }
         // 4. socket join
-        socket.join(roomId);
+        await socket.join(roomId);
+
         // 5. pagination 처리
         const paginateMessageRes = await ChatRepository.getChats({
           paginateReq: new PaginateReqModel({
@@ -175,6 +176,8 @@ async function socketPart({ PORT }: { PORT: string }) {
             data: paginateMessageRes,
           }),
         });
+
+        return;
       } catch (err: any) {
         console.log(err);
         socket.emit("joinRoomRes", {
@@ -185,51 +188,69 @@ async function socketPart({ PORT }: { PORT: string }) {
     });
 
     socket.on("postMessageReq", async (message) => {
-      const { accessToken, roomId, content } = message;
-      if (
-        accessToken === undefined ||
-        roomId === undefined ||
-        content === undefined
-      ) {
-        socket.emit("postMessageRes", {
-          message: "data is not enough",
-          status: 400,
-        });
-        return;
-      }
-      // 1. 토큰 검증
-      const userId = await verifyToken(accessToken);
-      // 2. userId로 user 검색
-      // 3. userId로 user가 보내준 message의 roomId가 속해있는지 검사
-      const [user, room] = await Promise.all([
-        getUser(userId),
-        ChatRepository.searchUserInRoom({
-          roomId: message.roomId,
+      try {
+        const { accessToken, roomId, content, tempMessageId } = message;
+
+        if (
+          accessToken === undefined ||
+          roomId === undefined ||
+          content === undefined ||
+          tempMessageId === undefined
+        ) {
+          socket.emit("postMessageRes", {
+            message: "data is not enough",
+            status: 400,
+            tempMessageId: tempMessageId === undefined ? null : tempMessageId,
+          });
+          return;
+        }
+        // 1. 토큰 검증
+        const userId = await verifyToken(accessToken);
+        // 2. userId로 user 검색
+        // 3. userId로 user가 보내준 message의 roomId가 속해있는지 검사
+        const [user, room] = await Promise.all([
+          getUser(userId),
+          ChatRepository.searchUserInRoom({
+            roomId: roomId,
+            userId: userId,
+          }),
+        ]);
+        if (user === null || room === null) {
+          socket.emit("postMessageRes", {
+            message: "No user or room",
+            status: 400,
+            tempMessageId: tempMessageId,
+          });
+          return;
+        }
+        // 4. db 적재
+        const chat = await ChatRepository.createChat({
+          roomId: roomId,
           userId: userId,
-        }),
-      ]);
-      if (user === null || room === null) {
-        socket.emit("postMessageRes", {
-          message: "No user or room",
-          status: 400,
+          content: content,
         });
-        return;
+
+        // 5. 내부 메시지 전송
+        chatSocket.to(roomId).emit("getMessageRes", {
+          status: 200,
+          data: {
+            ...chat.toJSON(),
+            tempMessageId: tempMessageId,
+          },
+        });
+      } catch (err: any) {
+        console.log(err);
+        socket.emit("postMessageRes", {
+          message: err.message || "something got wrong",
+          status: err.status || 500,
+          tempMessageId: message.tempMessageId,
+        });
       }
-      // 4. db 적재
-      const chat = await ChatRepository.createChat({
-        roomId: message.roomId,
-        userId: userId,
-        content: message.content,
-      });
-      // 5. 내부 메시지 전송
-      socket.to(message.roomId).emit("postMessageRes", {
-        status: 200,
-        data: chat,
-      });
     });
 
     socket.on("paginateMessageReq", async (data) => {
       const { roomId, paginationParams, accessToken } = data;
+
       if (
         roomId === undefined ||
         paginationParams === undefined ||
