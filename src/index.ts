@@ -6,11 +6,15 @@ import { User } from "./models/user_model";
 import { AuthUtils } from "./utils/auth_utils";
 import * as UserRepository from "./repositories/user_repository";
 import * as ChatRepository from "./repositories/chat_repository";
-import { PAGINATE_COUNT_DEFAULT, RoleType } from "./constant/default";
-import { ChatRoom } from "./models/chat_room_model";
+import {
+  CURRENT_ROOM_ID,
+  PAGINATE_COUNT_DEFAULT,
+  RoleType,
+  USER_ID,
+} from "./constant/default";
+
 import { PaginateReqModel } from "./models/paginate_req_model";
-import { count } from "console";
-import { after } from "node:test";
+
 import { PaginateResModel } from "./models/paginate_res_model";
 
 const server = async () => {
@@ -110,13 +114,21 @@ async function socketPart({ PORT }: { PORT: string }) {
       // 3. 만약 rooms가 하나도 없다면 새로운 채팅방 생성
       if (rooms.length === 0 && user.role === RoleType.USER) {
         await createChatRooms(userId);
-
         rooms = await ChatRepository.searchRoomByUserId(userId);
       }
 
       socket.emit("getChatRoomsRes", {
         status: 200,
         data: rooms,
+      });
+
+      rooms.map((room) => {
+        const roomId = room._id.toString();
+        socket.join(roomId);
+        socket.data = {
+          USER_ID: userId,
+          CURRENT_ROOM_ID: null,
+        };
       });
     } catch (err: any) {
       console.log(err);
@@ -128,82 +140,50 @@ async function socketPart({ PORT }: { PORT: string }) {
     }
 
     socket.on("leaveRoomReq", (data) => {
-      console.log(socket.id + " leaveRoomReq", data);
-      socket.leave(data.roomId);
+      socket.data[CURRENT_ROOM_ID] = null;
     });
 
-    socket.on("joinRoomReq", async (data) => {
-      try {
-        const { accessToken, roomId } = data;
-        if (accessToken === undefined || roomId === undefined) {
-          socket.emit("joinRoomRes", {
-            message: "data is not enough",
-            status: 400,
-          });
-          return;
-        }
+    socket.on("disconnect", () => {
+      socket.data[CURRENT_ROOM_ID] = null;
+      socket.data[USER_ID] = null;
+    });
 
-        // 1. 토큰 검증
-        const userId = await verifyToken(accessToken);
-        // 2. userId로 user 검색
-        // 3. userId와 roomId로 chatMember에서 유저가 있는지 확인(2번과 동기처리)
-        const [user, room] = await Promise.all([
-          getUser(userId),
-          ChatRepository.searchUserInRoom({
-            roomId: roomId,
-            userId: userId,
-          }),
-        ]);
-        if (user === null || room === null) {
-          socket.emit("joinRoomRes", {
-            message: "No user or room",
-            status: 400,
-          });
-          return;
-        }
-        // 4. socket join
-        await socket.join(roomId);
-
-        // 5. pagination 처리
-        const paginateMessageRes = await ChatRepository.getChats({
-          paginateReq: new PaginateReqModel({
-            count: PAGINATE_COUNT_DEFAULT,
-          }),
-          roomId: roomId,
-        });
-        // 6. paginateMessageRes 전송
-        socket.emit("paginateMessageRes", {
-          status: 200,
-          data: new PaginateResModel({
-            meta: {
-              count: paginateMessageRes.length,
-              hasMore: paginateMessageRes.length === PAGINATE_COUNT_DEFAULT,
-            },
-            data: paginateMessageRes,
-          }),
-        });
-
-        return;
-      } catch (err: any) {
-        console.log(err);
-        socket.emit("joinRoomRes", {
-          message: err.message || "something got wrong",
-          status: err.status || 500,
+    socket.on("enterRoomReq", (data) => {
+      const { roomId } = data;
+      if (roomId === undefined) {
+        socket.emit("enterRoomRes", {
+          message: "data is not enough",
+          status: 400,
         });
       }
+      // const clients = await chatSocket.in(roomId).fetchSockets();
+      // 어차피 유저로서 검색되지 않으면 connection이 연결되지 않음
+      // if (socket.data["userId"] === undefined) {
+      //   socket.emit("enterRoomRes", {
+      //     message: "connection have have to be authorized",
+      //     status: 400,
+      //   });
+      //   socket.disconnect();
+      // }
+      socket.data[CURRENT_ROOM_ID] = data.roomId;
+      return;
     });
 
-    socket.on("postMessageReq", async (message) => {
+    // sendMessageReq는 token verify를 진행함
+    // db create을 진행하기 때문에 에러가 발생할 수 있음
+    socket.on("sendMessageReq", async (message) => {
       try {
-        const { accessToken, roomId, content, tempMessageId } = message;
+        console.log((await chatSocket.fetchSockets()).length);
 
+        const { accessToken, roomId, content, tempMessageId } = message;
+        // undefined 검사
         if (
           accessToken === undefined ||
           roomId === undefined ||
           content === undefined ||
           tempMessageId === undefined
         ) {
-          socket.emit("postMessageRes", {
+          socket.emit("sendMessageRes", {
             message: "data is not enough",
             status: 400,
             tempMessageId: tempMessageId === undefined ? null : tempMessageId,
@@ -222,8 +202,20 @@ async function socketPart({ PORT }: { PORT: string }) {
           }),
         ]);
         if (user === null || room === null) {
-          socket.emit("postMessageRes", {
+          socket.emit("sendMessageRes", {
             message: "No user or room",
+            status: 400,
+            tempMessageId: tempMessageId,
+          });
+          return;
+        }
+        // 3. socket.data와 message의 roomId와 userId가 같은지 검사
+        if (
+          socket.data[CURRENT_ROOM_ID] !== roomId ||
+          socket.data[USER_ID] !== userId
+        ) {
+          socket.emit("sendMessageRes", {
+            message: "different info between socket and message",
             status: 400,
             tempMessageId: tempMessageId,
           });
@@ -244,49 +236,56 @@ async function socketPart({ PORT }: { PORT: string }) {
             tempMessageId: tempMessageId,
           },
         });
+        const chatId = chat._id.toString();
+        var clients = await chatSocket.in(roomId).fetchSockets();
+
+        // 읽음 처리
+        const userIds = clients.reduce((acc, client) => {
+          if (client.data[USER_ID] !== userId) {
+            acc.push(client.data[USER_ID]);
+          }
+          return acc;
+        }, [] as string[]);
+
+        await ChatRepository.updateMultiChatRead({
+          roomId: roomId,
+          chatId: chatId,
+          userIds: userIds,
+        });
+
+        return;
       } catch (err: any) {
         console.log(err);
-        socket.emit("postMessageRes", {
+        socket.emit("sendMessageRes", {
           message: err.message || "something got wrong",
           status: err.status || 500,
           tempMessageId: message.tempMessageId,
         });
       }
     });
-
+    // 기존에 token 검증을 진행하였으나
+    // socket.data에 userId가 없다면 connection이 연결되지 않기때문에 생각할 필요가 없음
     socket.on("paginateMessageReq", async (data) => {
       try {
-        const { roomId, paginationParams, accessToken } = data;
-
-        if (
-          roomId === undefined ||
-          paginationParams === undefined ||
-          accessToken === undefined
-        ) {
+        const { roomId, paginationParams } = data;
+        // undefined 검사
+        if (roomId === undefined || paginationParams === undefined) {
           socket.emit("paginateMessageRes", {
             message: "data is not enough",
             status: 400,
           });
           return;
         }
-        // 1. 토큰 검증
-        const userId = await verifyToken(accessToken);
-        // 2. userId로 user 검색
-        // 3. userId와 roomId로 chatMember에서 유저가 있는지 확인(2번과 동기처리)
-        const [user, room] = await Promise.all([
-          getUser(userId),
-          ChatRepository.searchUserInRoom({
-            roomId: roomId,
-            userId: userId,
-          }),
-        ]);
-        if (user === null || room === null) {
+
+        // 방에 속해있는지 검사
+        if (socket.data[CURRENT_ROOM_ID] !== roomId) {
           socket.emit("paginateMessageRes", {
-            message: "No user or room",
+            message: "you are not in the room",
             status: 400,
           });
           return;
         }
+
         // 4. pagination 처리
         const paginateMessageRes = await ChatRepository.getChats({
           paginateReq: new PaginateReqModel(paginationParams),

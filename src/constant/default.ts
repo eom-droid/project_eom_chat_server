@@ -26,3 +26,6 @@ export const numberToRoleType = (num: number) => {
 };
 
 export const PAGINATE_COUNT_DEFAULT = 30;
+
+export const USER_ID = "userId";
+export const CURRENT_ROOM_ID = "currentRoomId";

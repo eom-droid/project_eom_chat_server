@@ -1,10 +1,22 @@
-import { ChatModel } from "../models/chat_model";
+import { Chat, ChatModel } from "../models/chat_model";
 import { ChatMemberModel } from "../models/chat_member_model";
 import { ChatRoomModel } from "../models/chat_room_model";
 import { Types } from "mongoose";
 import { PaginateReqModel } from "../models/paginate_req_model";
 
-export const searchRoomByUserId = async (userId: string) => {
+export async function searchRoomByUserId(userId: string): Promise<
+  Array<{
+    _id: Types.ObjectId;
+    title: string;
+    max: number;
+    lastChat: Chat;
+    members: Array<{
+      _id: Types.ObjectId;
+      profileImg: string;
+      nickname: string;
+    }>;
+  }>
+> {
   try {
     // 가져와야되는 데이터 :
     // - 채팅방 id : _id  -> in chatRoom
@@ -16,7 +28,7 @@ export const searchRoomByUserId = async (userId: string) => {
     // - 마지막 채팅 시간, : lastChatCreatedAt -> in chatRoom -> in chat
 
     // 1. chatMembers에서 자신이 속해있는 채팅방에대한 정보를 가져온다
-    // 2. room 필드의 lastChatId를 활용하옅 lastchat의 시간과 내용을 가져온다
+
     // 3. room의 정보를 바탕으로 chatMember테이블을 join한다 그리고 chatmemeber의 데이터로 user 정보를 가져온다
     // 4. room에 속해있는 user의 정보를 바탕으로 user의 profileImg들을 가져온다
 
@@ -50,7 +62,6 @@ export const searchRoomByUserId = async (userId: string) => {
                 _id: 1,
                 title: 1,
                 max: 1,
-                lastChatId: 1,
               },
             },
           ],
@@ -92,24 +103,31 @@ export const searchRoomByUserId = async (userId: string) => {
           ],
         },
       },
+      // chat collection 중 제일 최신 1개를 가져옴
+      // 단 room의 lastChatId를 기준으로 하지 않음
+      // 왜냐하면 lastChatId는 chat의 _id를 가리키는데, chat의 _id는 생성될 때마다 새로운 값이기 때문에
+      // lastChatId를 기준으로 하면 chat이 생성될 때마다 lastChatId가 바뀌게 되고, 이는 lastChat를 가져올 때 문제가 됨
+      // 따라서 chat의 생성시간을 기준으로 가져옴
       {
         $lookup: {
           from: "chats",
-          localField: "room.lastChatId",
-          foreignField: "_id",
+          localField: "room._id",
+          foreignField: "roomId",
           as: "lastChat",
           pipeline: [
             {
-              $project: {
-                content: 1,
-                createdAt: 1,
-              },
+              $sort: { _id: -1 },
+            },
+            {
+              $limit: 1,
             },
           ],
         },
       },
       {
-        $unwind: "$lastChat",
+        $unwind: {
+          path: "$lastChat",
+        },
       },
       {
         $project: {
@@ -119,10 +137,8 @@ export const searchRoomByUserId = async (userId: string) => {
           title: "$room.title",
           // max는 chatRoom의 max를 가져온다
           max: "$room.max",
-          // lastChatContent는 lastChat의 내용을 가져온다
-          lastChatContent: "$lastChat.content",
-          // lastChatCreatedAt는 lastChat의 생성시간을 가져온다
-          lastChatCreatedAt: "$lastChat.createdAt",
+          // lastChat는 chatRoom의 lastChat을 가져온다
+          lastChat: 1,
           // members는 chatMember의 members를 가져온다
           members: 1,
         },
@@ -131,9 +147,10 @@ export const searchRoomByUserId = async (userId: string) => {
 
     return result;
   } catch (error) {
-    throw error;
+    console.log(error);
+    return [];
   }
-};
+}
 
 export const createChatRoom = async (userId: string, title: string) => {
   try {
@@ -222,6 +239,32 @@ export const getChats = async ({
       { $sort: { _id: -1 } },
       { $limit: paginateReq.count },
     ]);
+
+    return result;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const updateMultiChatRead = async ({
+  roomId,
+  chatId,
+  userIds,
+}: {
+  roomId: string;
+  chatId: string;
+  userIds: Array<string>;
+}) => {
+  try {
+    const result = await ChatMemberModel.updateMany(
+      {
+        roomId: new Types.ObjectId(roomId),
+        userId: { $in: userIds.map((userId) => new Types.ObjectId(userId)) },
+      },
+      {
+        $set: { lastReadChatId: new Types.ObjectId(chatId) },
+      }
+    );
 
     return result;
   } catch (error) {
