@@ -121,15 +121,14 @@ async function socketPart({ PORT }: { PORT: string }) {
         status: 200,
         data: rooms,
       });
-
+      // rooms에 속해있는 방들에 join
       rooms.map((room) => {
         const roomId = room._id.toString();
         socket.join(roomId);
-        socket.data = {
-          USER_ID: userId,
-          CURRENT_ROOM_ID: null,
-        };
       });
+      // socket.data에 userId를 등록함
+      socket.data[USER_ID] = userId;
+      socket.data[CURRENT_ROOM_ID] = null;
     } catch (err: any) {
       console.log(err);
       socket.emit("getChatRoomsRes", {
@@ -148,7 +147,7 @@ async function socketPart({ PORT }: { PORT: string }) {
       socket.data[USER_ID] = null;
     });
 
-    socket.on("enterRoomReq", (data) => {
+    socket.on("enterRoomReq", async (data) => {
       const { roomId } = data;
       if (roomId === undefined) {
         socket.emit("enterRoomRes", {
@@ -156,6 +155,7 @@ async function socketPart({ PORT }: { PORT: string }) {
           status: 400,
         });
       }
+
       // const clients = await chatSocket.in(roomId).fetchSockets();
       // 어차피 유저로서 검색되지 않으면 connection이 연결되지 않음
       // if (socket.data["userId"] === undefined) {
@@ -166,6 +166,16 @@ async function socketPart({ PORT }: { PORT: string }) {
       //   socket.disconnect();
       // }
       socket.data[CURRENT_ROOM_ID] = data.roomId;
+
+      const lastestChat = await ChatRepository.getLastestChat(roomId);
+      if (lastestChat !== null) {
+        ChatRepository.updateMultiChatRead({
+          roomId: roomId,
+          chatId: lastestChat._id.toString(),
+          userIds: [socket.data[USER_ID]],
+        });
+      }
+
       return;
     });
 
@@ -173,9 +183,8 @@ async function socketPart({ PORT }: { PORT: string }) {
     // db create을 진행하기 때문에 에러가 발생할 수 있음
     socket.on("sendMessageReq", async (message) => {
       try {
-        console.log((await chatSocket.fetchSockets()).length);
-
         const { accessToken, roomId, content, tempMessageId } = message;
+
         // undefined 검사
         if (
           accessToken === undefined ||
@@ -209,6 +218,7 @@ async function socketPart({ PORT }: { PORT: string }) {
           });
           return;
         }
+
         // 3. socket.data와 message의 roomId와 userId가 같은지 검사
         if (
           socket.data[CURRENT_ROOM_ID] !== roomId ||
@@ -221,6 +231,7 @@ async function socketPart({ PORT }: { PORT: string }) {
           });
           return;
         }
+
         // 4. db 적재
         const chat = await ChatRepository.createChat({
           roomId: roomId,
@@ -239,7 +250,7 @@ async function socketPart({ PORT }: { PORT: string }) {
         const chatId = chat._id.toString();
         var clients = await chatSocket.in(roomId).fetchSockets();
 
-        // 읽음 처리
+        // 6. 읽음 처리
         const userIds = clients.reduce((acc, client) => {
           if (client.data[USER_ID] !== userId) {
             acc.push(client.data[USER_ID]);

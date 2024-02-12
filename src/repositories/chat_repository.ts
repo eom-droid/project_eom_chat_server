@@ -35,6 +35,7 @@ export async function searchRoomByUserId(userId: string): Promise<
     // 전제 : user가 chat_screen에 처음 들어가면 현재 본인이 속해있는 room에 대한 정보를 가져와야함
     // 따라서 그 요청 시 서버에서 받을 수 있는 항목은 userId 뿐임
     // collection : user, chatMember, chatRoom, chat
+
     const result = await ChatMemberModel.aggregate([
       // 1. 처음에 ChatMember에서 match를 통해 본인이 속한 Room에 대한 정보를 알아냄
       {
@@ -108,6 +109,7 @@ export async function searchRoomByUserId(userId: string): Promise<
       // 왜냐하면 lastChatId는 chat의 _id를 가리키는데, chat의 _id는 생성될 때마다 새로운 값이기 때문에
       // lastChatId를 기준으로 하면 chat이 생성될 때마다 lastChatId가 바뀌게 되고, 이는 lastChat를 가져올 때 문제가 됨
       // 따라서 chat의 생성시간을 기준으로 가져옴
+      // nullable
       {
         $lookup: {
           from: "chats",
@@ -127,6 +129,7 @@ export async function searchRoomByUserId(userId: string): Promise<
       {
         $unwind: {
           path: "$lastChat",
+          preserveNullAndEmptyArrays: true,
         },
       },
       {
@@ -147,7 +150,6 @@ export async function searchRoomByUserId(userId: string): Promise<
 
     return result;
   } catch (error) {
-    console.log(error);
     return [];
   }
 }
@@ -265,6 +267,18 @@ export const updateMultiChatRead = async ({
         $set: { lastReadChatId: new Types.ObjectId(chatId) },
       }
     );
+
+    return result;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getLastestChat = async (roomId: string) => {
+  try {
+    const result = await ChatModel.findOne({
+      roomId: new Types.ObjectId(roomId),
+    }).sort({ _id: -1 });
 
     return result;
   } catch (error) {
