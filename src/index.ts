@@ -167,14 +167,23 @@ async function socketPart({ PORT }: { PORT: string }) {
       // }
       socket.data[CURRENT_ROOM_ID] = data.roomId;
 
-      const lastestChat = await ChatRepository.getLastestChat(roomId);
-      if (lastestChat !== null) {
+      const lastChat = await ChatRepository.getLastestChat(roomId);
+      if (lastChat !== null) {
         ChatRepository.updateMultiChatRead({
           roomId: roomId,
-          chatId: lastestChat._id.toString(),
+          chatId: lastChat._id.toString(),
           userIds: [socket.data[USER_ID]],
         });
       }
+
+      chatSocket.to(roomId).emit("enterRoomRes", {
+        status: 200,
+        data: {
+          roomId: roomId,
+          lastChatId: lastChat === null ? null : lastChat._id.toString(),
+          userId: socket.data[USER_ID],
+        },
+      });
 
       return;
     });
@@ -200,14 +209,14 @@ async function socketPart({ PORT }: { PORT: string }) {
           return;
         }
         // 1. 토큰 검증
-        const userId = await verifyToken(accessToken);
+        const senderId = await verifyToken(accessToken);
         // 2. userId로 user 검색
         // 3. userId로 user가 보내준 message의 roomId가 속해있는지 검사
         const [user, room] = await Promise.all([
-          getUser(userId),
+          getUser(senderId),
           ChatRepository.searchUserInRoom({
             roomId: roomId,
-            userId: userId,
+            userId: senderId,
           }),
         ]);
         if (user === null || room === null) {
@@ -222,7 +231,7 @@ async function socketPart({ PORT }: { PORT: string }) {
         // 3. socket.data와 message의 roomId와 userId가 같은지 검사
         if (
           socket.data[CURRENT_ROOM_ID] !== roomId ||
-          socket.data[USER_ID] !== userId
+          socket.data[USER_ID] !== senderId
         ) {
           socket.emit("sendMessageRes", {
             message: "different info between socket and message",
@@ -235,33 +244,35 @@ async function socketPart({ PORT }: { PORT: string }) {
         // 4. db 적재
         const chat = await ChatRepository.createChat({
           roomId: roomId,
-          userId: userId,
+          userId: senderId,
           content: content,
         });
 
-        // 5. 내부 메시지 전송
-        chatSocket.to(roomId).emit("getMessageRes", {
-          status: 200,
-          data: {
-            ...chat.toJSON(),
-            tempMessageId: tempMessageId,
-          },
-        });
         const chatId = chat._id.toString();
         var clients = await chatSocket.in(roomId).fetchSockets();
 
-        // 6. 읽음 처리
-        const userIds = clients.reduce((acc, client) => {
-          if (client.data[USER_ID] !== userId) {
+        // 5. 읽음 처리
+        const innerRoomClientIds = clients.reduce((acc, client) => {
+          if (client.data[CURRENT_ROOM_ID] === roomId) {
             acc.push(client.data[USER_ID]);
           }
           return acc;
         }, [] as string[]);
 
+        // 6. 내부 메시지 전송
+        chatSocket.to(roomId).emit("getMessageRes", {
+          status: 200,
+          data: {
+            ...chat.toJSON(),
+            readUserIds: innerRoomClientIds,
+            tempMessageId: tempMessageId,
+          },
+        });
+        // 7. 읽음 처리
         await ChatRepository.updateMultiChatRead({
           roomId: roomId,
           chatId: chatId,
-          userIds: userIds,
+          userIds: innerRoomClientIds,
         });
 
         return;

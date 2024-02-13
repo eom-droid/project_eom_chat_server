@@ -99,6 +99,7 @@ export async function searchRoomByUserId(userId: string): Promise<
                 _id: "$user._id",
                 profileImg: "$user.profileImg",
                 nickname: "$user.nickname",
+                lastReadChatId: 1,
               },
             },
           ],
