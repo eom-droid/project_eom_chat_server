@@ -145,9 +145,11 @@ export async function searchRoomByUserId(userId: string): Promise<
           lastChat: 1,
           // members는 chatMember의 members를 가져온다
           members: 1,
+          lastReadChatId: 1,
         },
       },
     ]);
+    console.log(result);
 
     return result;
   } catch (error) {
