@@ -14,7 +14,6 @@ import {
 } from "./constant/default";
 
 import { PaginateReqModel } from "./models/paginate_req_model";
-
 import { PaginateResModel } from "./models/paginate_res_model";
 
 const server = async () => {
