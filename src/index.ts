@@ -12,7 +12,8 @@ import {
   RoleType,
   USER_ID,
 } from "./constant/default";
-
+import { readFileSync } from "fs";
+import { createServer } from "https";
 import { PaginateReqModel } from "./models/paginate_req_model";
 import { PaginateResModel } from "./models/paginate_res_model";
 
@@ -24,6 +25,7 @@ async function server() {
     PORT,
     AMQP_URL,
     AMQP_QUEUE_NAME,
+    HOST_NAME,
   } = process.env;
   // .env 파일 내에 있는 변수들이 없을 경우 에러를 던짐
   if (!MONGO_URI) throw new Error("MONGO_URI is required!!!");
@@ -32,10 +34,11 @@ async function server() {
   if (!PORT) throw new Error("PORT is required!!!");
   if (!AMQP_URL) throw new Error("AMQP_URL is required!!!");
   if (!AMQP_QUEUE_NAME) throw new Error("QUEUE_NAME is required!!!");
+  if (!HOST_NAME) throw new Error("HOST_NAME is required!!!");
 
   await connectMongoDB({ MONGO_URI, MONGO_URI_SUFFIX, NODE_ENV });
-  await connectToRabbitMQ({ AMQP_URL, AMQP_QUEUE_NAME });
-  await socketPart({ PORT });
+  // await connectToRabbitMQ({ AMQP_URL, AMQP_QUEUE_NAME });
+  await socketPart({ PORT, HOST_NAME });
 }
 
 async function connectMongoDB({
@@ -77,10 +80,27 @@ async function connectToRabbitMQ({
 }
 
 // socket part
-async function socketPart({ PORT }: { PORT: string }) {
-  const io = new Server({
-    path: "/project-eom/chat-server",
-  });
+async function socketPart({
+  PORT,
+  HOST_NAME,
+}: {
+  PORT: string;
+  HOST_NAME: string;
+}) {
+  var privateKey = readFileSync(
+    "/etc/letsencrypt/live/" + HOST_NAME + "/privkey.pem"
+  );
+  var certificate = readFileSync(
+    "/etc/letsencrypt/live/" + HOST_NAME + "/cert.pem"
+  );
+  var ca = readFileSync("/etc/letsencrypt/live/" + HOST_NAME + "/chain.pem");
+  const credentails = {
+    key: privateKey,
+    cert: certificate,
+    ca: ca,
+  };
+  const httpsServer = createServer(credentails);
+  const io = new Server(httpsServer);
 
   const chatSocket = io.of("/chat");
 
