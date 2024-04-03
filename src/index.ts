@@ -101,9 +101,7 @@ async function socketPart({
     ca: ca,
   });
   const io = new Server(httpsServer, {
-    cors: {
-      origin: "*",
-    },
+    path: "/project-eom/chat-server",
   });
 
   const chatSocket = io.of("/chat");
