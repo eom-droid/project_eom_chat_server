@@ -94,13 +94,23 @@ async function socketPart({
     "/etc/letsencrypt/live/" + HOST_NAME + "/cert.pem"
   );
   var ca = readFileSync("/etc/letsencrypt/live/" + HOST_NAME + "/chain.pem");
-  const credentails = {
-    key: privateKey,
-    cert: certificate,
-    ca: ca,
-  };
-  const httpsServer = createServer(credentails);
-  const io = new Server(httpsServer);
+
+  const httpsServer = createServer(
+    {
+      key: privateKey,
+      cert: certificate,
+      ca: ca,
+    },
+    (req, res) => {
+      res.writeHead(200);
+      res.end("hello world\n");
+    }
+  );
+  const io = new Server(httpsServer, {
+    cors: {
+      origin: "*",
+    },
+  });
 
   const chatSocket = io.of("/chat");
 
