@@ -16,7 +16,7 @@ import {
 import { PaginateReqModel } from "./models/paginate_req_model";
 import { PaginateResModel } from "./models/paginate_res_model";
 
-const server = async () => {
+async function server() {
   const {
     MONGO_URI,
     MONGO_URI_SUFFIX,
@@ -36,7 +36,7 @@ const server = async () => {
   await connectMongoDB({ MONGO_URI, MONGO_URI_SUFFIX, NODE_ENV });
   await connectToRabbitMQ({ AMQP_URL, AMQP_QUEUE_NAME });
   await socketPart({ PORT });
-};
+}
 
 async function connectMongoDB({
   MONGO_URI,
@@ -50,17 +50,7 @@ async function connectMongoDB({
   try {
     // mongoose를 통해 MongoDB에 연결
     await mongoose.connect(MONGO_URI + NODE_ENV + MONGO_URI_SUFFIX);
-    // mongoose.set("debug", function (collectionName, method, query, doc) {
-    //   console.log(
-    //     "Mongoose: " +
-    //       collectionName +
-    //       "." +
-    //       method +
-    //       " (" +
-    //       JSON.stringify(query, null, 2) +
-    //       ")"
-    //   );
-    // });
+
     console.log("MongoDB connected");
   } catch (error) {
     console.error("Error connecting to MongoDB:", error);

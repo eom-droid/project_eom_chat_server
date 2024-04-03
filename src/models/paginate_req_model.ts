@@ -12,7 +12,7 @@ export class PaginateReqModel {
       this.after = after;
       return this;
     } catch (error) {
-      console.log(new Date().toISOString() + ": npm log: " + error);
+      console.error(new Date().toISOString() + ": npm log: " + error);
 
       throw new CustomWSErrorModel({
         status: 400,

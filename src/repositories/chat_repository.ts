@@ -149,9 +149,9 @@ export async function searchRoomByUserId(userId: string): Promise<
         },
       },
     ]);
-    console.log(result);
 
-    return result;
+    // members의 값이 2보다 적은 것은 가져오지 말자
+    return result.filter((room) => room.members.length >= 2);
   } catch (error) {
     return [];
   }
