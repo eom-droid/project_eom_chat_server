@@ -342,7 +342,7 @@ async function socketPart({
     });
   });
 
-  io.listen(Number(PORT));
+  httpsServer.listen(Number(PORT));
   console.log(`server listening on port ${PORT}`);
 }
 
