@@ -95,17 +95,11 @@ async function socketPart({
   );
   var ca = readFileSync("/etc/letsencrypt/live/" + HOST_NAME + "/chain.pem");
 
-  const httpsServer = createServer(
-    {
-      key: privateKey,
-      cert: certificate,
-      ca: ca,
-    },
-    (req, res) => {
-      res.writeHead(200);
-      res.end("hello world\n");
-    }
-  );
+  const httpsServer = createServer({
+    key: privateKey,
+    cert: certificate,
+    ca: ca,
+  });
   const io = new Server(httpsServer, {
     cors: {
       origin: "*",
