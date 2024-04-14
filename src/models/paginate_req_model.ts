@@ -8,7 +8,10 @@ export class PaginateReqModel {
 
   constructor({ count, after }: { count?: number; after?: string }) {
     try {
-      this.count = count === undefined ? PAGINATE_COUNT_DEFAULT : Number(count);
+      this.count =
+        count === undefined || count === null
+          ? PAGINATE_COUNT_DEFAULT
+          : Number(count);
       this.after = after;
       return this;
     } catch (error) {

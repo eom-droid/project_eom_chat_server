@@ -4,19 +4,7 @@ import { ChatRoomModel } from "../models/chat_room_model";
 import { Types } from "mongoose";
 import { PaginateReqModel } from "../models/paginate_req_model";
 
-export async function searchRoomByUserId(userId: string): Promise<
-  Array<{
-    _id: Types.ObjectId;
-    title: string;
-    max: number;
-    lastChat: Chat;
-    members: Array<{
-      _id: Types.ObjectId;
-      profileImg: string;
-      nickname: string;
-    }>;
-  }>
-> {
+export async function searchRoomByUserId(userId: string) {
   try {
     // 가져와야되는 데이터 :
     // - 채팅방 id : _id  -> in chatRoom
@@ -116,7 +104,7 @@ export async function searchRoomByUserId(userId: string): Promise<
           from: "chats",
           localField: "room._id",
           foreignField: "roomId",
-          as: "lastChat",
+          as: "lastMessage",
           pipeline: [
             {
               $sort: { _id: -1 },
@@ -129,7 +117,7 @@ export async function searchRoomByUserId(userId: string): Promise<
       },
       {
         $unwind: {
-          path: "$lastChat",
+          path: "$lastMessage",
           preserveNullAndEmptyArrays: true,
         },
       },
@@ -141,11 +129,10 @@ export async function searchRoomByUserId(userId: string): Promise<
           title: "$room.title",
           // max는 chatRoom의 max를 가져온다
           max: "$room.max",
-          // lastChat는 chatRoom의 lastChat을 가져온다
-          lastChat: 1,
+          // 하나만 가져오기 때문에 0번째를 가져온다
+          lastMessage: 1,
           // members는 chatMember의 members를 가져온다
           members: 1,
-          lastReadChatId: 1,
         },
       },
     ]);
@@ -230,7 +217,15 @@ export const getChats = async ({
 }: {
   paginateReq: PaginateReqModel;
   roomId: string;
-}) => {
+}): Promise<
+  Array<{
+    _id: Types.ObjectId;
+    userId: Types.ObjectId;
+    roomId: Types.ObjectId;
+    content: string;
+    createdAt: Date;
+  }>
+> => {
   try {
     const query = paginateReq.generateQuery(false);
 
