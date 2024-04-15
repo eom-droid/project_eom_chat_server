@@ -116,22 +116,7 @@ async function socketPart({
   const chatSocket = io.of("/chat");
 
   chatSocket.on("connection", async (socket) => {
-    socket.on("test", () => {
-      console.log("test");
-    });
-
-    socket.on("leaveRoomReq", (data) => {
-      socket.data[CURRENT_ROOM_ID] = null;
-    });
-
-    socket.on("disconnect", () => {
-      socket.data[CURRENT_ROOM_ID] = null;
-      socket.data[USER_ID] = null;
-      socket.disconnect();
-    });
-
     socket.on("getChatRoom", async (arg, response) => {
-      console.log("??????????");
       // 1. user check
       const userId = socket.data[USER_ID];
       const user = await userRepository.searchUserById(userId);
@@ -165,7 +150,7 @@ async function socketPart({
       console.log("getChatRoom done");
     });
 
-    socket.on("enterRoomReq", async (data, response) => {
+    socket.on("enterRoom", async (data, response) => {
       const { roomId } = data;
       const userId = socket.data[USER_ID];
 
@@ -184,7 +169,7 @@ async function socketPart({
         chatRepository.updateMultiChatRead({
           roomId: roomId,
           chatId: lastChat._id.toString(),
-          userIds: userId,
+          userIds: [userId],
         });
       }
 
@@ -192,7 +177,7 @@ async function socketPart({
         status: 200,
         roomId: roomId,
         data: {
-          lastChatId: lastChat === null ? null : lastChat._id.toString(),
+          lastChatId: lastChat === null ? "no chat" : lastChat._id.toString(),
           userId: socket.data[USER_ID],
         },
       };
@@ -314,6 +299,16 @@ async function socketPart({
       }
     });
 
+    socket.on("leaveRoomReq", (data) => {
+      socket.data[CURRENT_ROOM_ID] = null;
+    });
+
+    socket.on("disconnect", () => {
+      socket.data[CURRENT_ROOM_ID] = null;
+      socket.data[USER_ID] = null;
+      socket.disconnect();
+    });
+
     // 기존에 token 검증을 진행하였으나
     // socket.data에 userId가 없다면 connection이 연결되지 않기때문에 생각할 필요가 없음
     socket.on("getMessages", async (data, response) => {
@@ -380,7 +375,7 @@ async function socketPart({
       // socket.data에 userId를 등록함
       socket.data[USER_ID] = userId;
       socket.data[CURRENT_ROOM_ID] = null;
-      console.log(new Date());
+      socket.emit("connected", "connected");
     } catch (err: any) {
       console.log(err);
       socket.disconnect();

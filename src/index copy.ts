@@ -167,57 +167,6 @@ async function socketPart({
       socket.data[USER_ID] = null;
     });
 
-    socket.on("enterRoomReq", async (data) => {
-      const { roomId, paginationParams } = data;
-      if (roomId === undefined) {
-        socket.emit("enterRoomRes", {
-          message: "data is not enough",
-          status: 400,
-        });
-      }
-      socket.data[CURRENT_ROOM_ID] = data.roomId;
-
-      const lastChat = await ChatRepository.getLastestChat(roomId);
-      if (lastChat !== null) {
-        ChatRepository.updateMultiChatRead({
-          roomId: roomId,
-          chatId: lastChat._id.toString(),
-          userIds: [socket.data[USER_ID]],
-        });
-      }
-
-      if (paginationParams !== undefined && paginationParams !== null) {
-        // 4. pagination 처리
-        const paginateMessageRes = await ChatRepository.getChats({
-          paginateReq: new PaginateReqModel(paginationParams),
-          roomId: roomId,
-        });
-        // 5. paginateMessageRes 전송
-        socket.emit("paginateMessageRes", {
-          status: 200,
-          roomId: roomId,
-          data: new PaginateResModel({
-            meta: {
-              count: paginateMessageRes.length,
-              hasMore: paginateMessageRes.length === PAGINATE_COUNT_DEFAULT,
-            },
-            data: paginateMessageRes,
-          }),
-        });
-      }
-
-      chatSocket.to(roomId).emit("enterRoomRes", {
-        status: 200,
-        roomId: roomId,
-        data: {
-          lastChatId: lastChat === null ? null : lastChat._id.toString(),
-          userId: socket.data[USER_ID],
-        },
-      });
-
-      return;
-    });
-
     // sendMessageReq는 token verify를 진행함
     // db create을 진행하기 때문에 에러가 발생할 수 있음
     socket.on("sendMessageReq", async (message) => {
