@@ -2,7 +2,6 @@ import { Server } from "socket.io";
 import mongoose from "mongoose";
 import amqp from "amqplib";
 import { CustomWSErrorModel } from "./models/custom_ws_error_model";
-import { User } from "./models/user_model";
 import { AuthUtils } from "./utils/auth_utils";
 import * as userRepository from "./repositories/user_repository";
 import * as chatRepository from "./repositories/chat_repository";
@@ -147,10 +146,10 @@ async function socketPart({
         const roomId = room._id.toString();
         socket.join(roomId);
       });
-      console.log("getChatRoom done");
     });
 
     socket.on("enterRoom", async (data, response) => {
+      console.log("enterRoom");
       const { roomId } = data;
       const userId = socket.data[USER_ID];
 
@@ -254,7 +253,7 @@ async function socketPart({
         });
 
         const chatId = chat._id.toString();
-        var clients = await socket.in(roomId).fetchSockets();
+        var clients = await chatSocket.in(roomId).fetchSockets();
 
         // 5. 읽음 처리 준비
         const innerRoomClientIds = clients.reduce((acc, client) => {
@@ -281,6 +280,10 @@ async function socketPart({
         // 모든 유저에게 발송
         chatSocket.to(roomId).emit("newMessage", respData);
 
+        console.log("roomId : ", roomId);
+        console.log("innerRoomClientIds : ", innerRoomClientIds);
+        console.log("chatId : ", chatId);
+
         // 7. 읽음 처리
         await chatRepository.updateMultiChatRead({
           roomId: roomId,
@@ -299,7 +302,8 @@ async function socketPart({
       }
     });
 
-    socket.on("leaveRoomReq", (data) => {
+    socket.on("leaveRoom", (data) => {
+      console.log("leaveRoom");
       socket.data[CURRENT_ROOM_ID] = null;
     });
 

@@ -255,7 +255,6 @@ export const updateMultiChatRead = async ({
   chatId: string;
   userIds: Array<string>;
 }) => {
-  console.log(userIds);
   try {
     const result = await ChatMemberModel.updateMany(
       {
