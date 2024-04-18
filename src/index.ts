@@ -104,7 +104,9 @@ async function socketPart({
     server = new Server(httpsServer, {
       path: "/project-eom/chat-server",
     });
+    console.log("use https");
   } catch (e) {
+    console.log("use http");
     server = new Server({
       path: "/project-eom/chat-server",
     });
@@ -263,9 +265,6 @@ async function socketPart({
           return acc;
         }, [] as string[]);
 
-        // 6. 내부 메시지 전송
-        // chatSocket.to(roomId).emit("getMessageRes", {
-
         const respData = {
           status: 200,
           roomId: roomId,
@@ -329,14 +328,14 @@ async function socketPart({
         }
 
         // 방에 속해있는지 검사
-        // if (socket.data[CURRENT_ROOM_ID] !== roomId) {
-        //   response({
-        //     message: "you are not in the room",
-        //     roomId: roomId,
-        //     status: 400,
-        //   });
-        //   return;
-        // }
+        if (socket.data[CURRENT_ROOM_ID] !== roomId) {
+          response({
+            message: "you are not in the room",
+            roomId: roomId,
+            status: 400,
+          });
+          return;
+        }
 
         // 4. pagination 처리
         const paginateMessageRes = await chatRepository.getChats({
