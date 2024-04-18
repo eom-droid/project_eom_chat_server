@@ -12,7 +12,8 @@ import {
   USER_ID,
 } from "./constant/default";
 import { readFileSync } from "fs";
-import { createServer } from "https";
+import { createServer as createServerHttps } from "https";
+import { createServer as createServerHttp } from "http";
 import { PaginateReqModel } from "./models/paginate_req_model";
 import { PaginateResModel } from "./models/paginate_res_model";
 
@@ -96,14 +97,12 @@ async function socketPart({
     );
     var ca = readFileSync("/etc/letsencrypt/live/" + HOST_NAME + "/chain.pem");
 
-    const httpsServer = createServer({
+    server = createServerHttps({
       key: privateKey,
       cert: certificate,
       ca: ca,
     });
-    server = new Server(httpsServer, {
-      path: "/project-eom/chat-server",
-    });
+
     console.log("use https");
   } catch (e) {
     console.log("use http");
@@ -112,7 +111,10 @@ async function socketPart({
     });
   }
 
-  const io = server;
+  //@ts-ignore
+  const io = new Server(server, {
+    path: "/project-eom/chat-server",
+  });
 
   const chatSocket = io.of("/chat");
 
@@ -385,8 +387,7 @@ async function socketPart({
     }
   });
 
-  // httpsServer.listen(Number(PORT));
-  io.listen(Number(PORT));
+  server.listen(Number(PORT));
   console.log(`server listening on port ${PORT}`);
 }
 
