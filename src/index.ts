@@ -106,9 +106,7 @@ async function socketPart({
     console.log("use https");
   } catch (e) {
     console.log("use http");
-    server = new Server({
-      path: "/project-eom/chat-server",
-    });
+    server = createServerHttp();
   }
 
   //@ts-ignore
